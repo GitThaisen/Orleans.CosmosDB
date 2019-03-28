@@ -6,21 +6,23 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <PackageId>Orleans.Persistence.CosmosDB</PackageId>
+    <PackageId>Nrk.Orleans.Persistence.CosmosDB</PackageId>
     <Title>Microsoft Orleans Persistence provider for Azure CosmosDB</Title>
-    <Description>Microsoft Orleans persistence provider backed by Azure CosmosDB</Description>
-    <Authors>Gutemberg Ribeiro</Authors>
+    <Description>Microsoft Orleans persistence provider backed by Azure CosmosDB. Mirror of OrleansContrib/CosmosDB except using a downgraded version, 2.2.1, of Microsoft.Azure.DocumentDB.Core to avoid TransportExceptions. Package version number matches Orleans.Persistence.CosmosDB</Description>
+    <Authors>Gutemberg Ribeiro, Harald Schult Ulriksen</Authors>
     <Product>Orleans Azure CosmosDB</Product>
     <PackageLicenseUrl>https://github.com/dotnet/Orleans#license</PackageLicenseUrl>
-    <PackageProjectUrl>https://github.com/OrleansContrib/Orleans.CosmosDB</PackageProjectUrl>
+    <PackageProjectUrl>https://github.com/nrkno/Orleans.CosmosDB/tree/DowngradeCosmosDb</PackageProjectUrl>
     <PackageIconUrl>https://raw.githubusercontent.com/dotnet/orleans/gh-pages/assets/logo_128.png</PackageIconUrl>
     <PackageTags>Orleans Cloud-Computing Actor-Model Actors Distributed-Systems Azure CosmosDB C# .NET</PackageTags>
     <PackageReleaseNotes></PackageReleaseNotes>
-    <RepositoryUrl>https://github.com/OrleansContrib/Orleans.CosmosDB</RepositoryUrl>
+    <RepositoryUrl>https://github.com/nrkno/Orleans.CosmosDB/tree/DowngradeCosmosDb</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <IncludeSymbols>true</IncludeSymbols>
     <IncludeSource>true</IncludeSource>
     <VersionPrefix>1.1.0-rc1</VersionPrefix>
+    <Company>Gutemberg Ribeiro, NRK</Company>
+    <Version>2.3</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -50,7 +52,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Azure.DocumentDB.Core" Version="2.2.3" />
+    <PackageReference Include="Microsoft.Azure.DocumentDB.Core" Version="2.2.1" />
     <PackageReference Include="Microsoft.Orleans.Core" Version="2.3.0" />
     <PackageReference Include="Microsoft.Orleans.OrleansRuntime" Version="2.3.0" />
     <PackageReference Include="System.Threading.Tasks.Extensions" Version="4.5.2" />
