@@ -30,10 +30,6 @@ namespace Orleans.Persistence.CosmosDB
     /// </summary>
     public class CosmosDBGrainStorage : IGrainStorage, ILifecycleParticipant<ISiloLifecycle>
     {
-
-        private const string WRITE_STATE_SPROC = "WriteState";
-        private const string READ_STATE_SPROC = "ReadState";
-        private const string CLEAR_STATE_SPROC = "ClearState";
         private const string LOOKUP_INDEX_SPROC = "LookupIndex";
         private const string DEFAULT_PARTITION_KEY_PATH = "/PartitionKey";
         private const string GRAINTYPE_PARTITION_KEY_PATH = "/GrainType";
@@ -76,9 +72,6 @@ namespace Orleans.Persistence.CosmosDB
 
             this._sprocFiles = new Dictionary<string, string>
             {
-                { WRITE_STATE_SPROC, $"{WRITE_STATE_SPROC}.js" },
-                { READ_STATE_SPROC, $"{READ_STATE_SPROC}.js" },
-                { CLEAR_STATE_SPROC, $"{CLEAR_STATE_SPROC}.js" },
                 { LOOKUP_INDEX_SPROC, $"{LOOKUP_INDEX_SPROC}.js" }
             };
 
@@ -158,15 +151,14 @@ namespace Orleans.Persistence.CosmosDB
 
             try
             {
-                var spResponse = await ExecuteWithRetries(() => this._dbClient.ExecuteStoredProcedureAsync<GrainStateEntity>(
-                        UriFactory.CreateStoredProcedureUri(this._options.DB, this._options.Collection, READ_STATE_SPROC),
-                        new RequestOptions { PartitionKey = new PartitionKey(partitionKey) },
-                        grainType, id)).ConfigureAwait(false);
+                var doc = await ExecuteWithRetries(async() => await this._dbClient.ReadDocumentAsync<GrainStateEntity>(
+                    UriFactory.CreateDocumentUri(this._options.DB, this._options.Collection, id),
+                    new RequestOptions { PartitionKey = new PartitionKey(partitionKey) })).ConfigureAwait(false);
 
-                if (spResponse.Response?.State != null)
+                if (doc.Document?.State != null)
                 {
-                    grainState.State = JsonConvert.DeserializeObject(spResponse.Response.State.ToString(), grainState.State.GetType(), _options.JsonSerializerSettings);
-                    grainState.ETag = spResponse.Response.ETag;
+                    grainState.State = JsonConvert.DeserializeObject(doc.Document.State.ToString(), grainState.State.GetType(), this._options.JsonSerializerSettings);
+                    grainState.ETag = doc.Document.ETag;
                 }
                 else
                 {
@@ -216,14 +208,31 @@ namespace Orleans.Persistence.CosmosDB
                     PartitionKey = partitionKey
                 };
 
-                var entityString = JsonConvert.SerializeObject(entity, this._options.JsonSerializerSettings);
 
-                var spResponse = await ExecuteWithRetries(() => this._dbClient.ExecuteStoredProcedureAsync<string>(
-                       UriFactory.CreateStoredProcedureUri(this._options.DB, this._options.Collection, WRITE_STATE_SPROC),
-                       new RequestOptions { PartitionKey = new PartitionKey(partitionKey) },
-                       entityString)).ConfigureAwait(false);
+                if (string.IsNullOrWhiteSpace(grainState.ETag))
+                {
+                    var response =  await ExecuteWithRetries(() => this._dbClient.CreateDocumentAsync(
+                        UriFactory.CreateDocumentCollectionUri(this._options.DB, this._options.Collection),
+                        entity,
+                        new RequestOptions { PartitionKey = new PartitionKey(partitionKey) },
+                        true)).ConfigureAwait(false);
 
-                grainState.ETag = spResponse.Response;
+                    grainState.ETag = response.Resource.ETag;
+                } else
+                {
+                    var requestOptions = new RequestOptions
+                    {
+                        PartitionKey = new PartitionKey(partitionKey),
+                        AccessCondition = new AccessCondition { Condition = grainState.ETag, Type = AccessConditionType.IfMatch }
+                    };
+
+                    var response = await ExecuteWithRetries(() =>
+                        this._dbClient.ReplaceDocumentAsync(
+                            UriFactory.CreateDocumentUri(this._options.DB, this._options.Collection,entity.Id),
+                            entity, requestOptions)).ConfigureAwait(false);
+                    grainState.ETag = response.Resource.ETag;
+                }
+                  
             }
             catch (Exception exc)
             {
@@ -242,14 +251,34 @@ namespace Orleans.Persistence.CosmosDB
                 "Clearing: GrainType={0} Key={1} Grainid={2} ETag={3} DeleteStateOnClear={4} from Collection={4} with PartitionKey {5}",
                 grainType, id, grainReference, grainState.ETag, this._options.DeleteStateOnClear, this._options.Collection, partitionKey);
 
-            try
+            var requestOptions = new RequestOptions
             {
-                var spResponse = await ExecuteWithRetries(() => this._dbClient.ExecuteStoredProcedureAsync<string>(
-                        UriFactory.CreateStoredProcedureUri(this._options.DB, this._options.Collection, CLEAR_STATE_SPROC),
-                        new RequestOptions { PartitionKey = new PartitionKey(partitionKey) },
-                        grainType, id, grainState.ETag, this._options.DeleteStateOnClear)).ConfigureAwait(false);
+                PartitionKey = new PartitionKey(partitionKey),
+                AccessCondition = new AccessCondition {  Condition = grainState.ETag, Type = AccessConditionType.IfMatch}
+            };
 
-                grainState.ETag = spResponse.Response;
+            try {
+                if (this._options.DeleteStateOnClear)
+                    await ExecuteWithRetries(() => this._dbClient.DeleteDocumentAsync(
+                        UriFactory.CreateDocumentUri(this._options.DB, this._options.Collection, id),
+                        requestOptions));
+                else
+                {
+                    var entity = new GrainStateEntity
+                    {
+                        ETag = grainState.ETag,
+                        Id = id,
+                        GrainType = grainType,
+                        State = null,
+                        PartitionKey = partitionKey
+                    };
+
+                    var response = await ExecuteWithRetries(() =>
+                            this._dbClient.ReplaceDocumentAsync(
+                                UriFactory.CreateDocumentUri(this._options.DB, this._options.Collection, entity.Id),
+                                entity, requestOptions)).ConfigureAwait(false);
+                    grainState.ETag = response.Resource.ETag;
+                }
             }
             catch (Exception exc)
             {
